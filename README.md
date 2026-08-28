@@ -136,3 +136,38 @@ If you ever wish to disable the automatic daily schedule:
 2. Double-click **`uninstall.bat`**.
 3. This removes the scheduled task and desktop shortcuts.
 *(Your existing downloaded newspapers in `Desktop\TOI Daily\` will remain completely untouched).*
+
+---
+
+## 💻 How to Run This Project on Your Own Windows PC
+
+Follow these steps once. After installation, the program will automatically download the **Times of India — Ahmedabad Edition** every day. You do not need to run it manually every day.
+
+### Complete Setup
+
+1. Download this project from GitHub:
+   **Code → Download ZIP**
+
+2. Extract the ZIP file.
+
+3. Open the extracted `TOI-Automation` folder.
+
+4. Open **PowerShell** inside this folder.
+
+5. Copy and run these commands **one by one**:
+
+```powershell
+# Check Python
+python --version
+
+# Install required packages
+python -m pip install -r requirements.txt
+
+# Install the browser required by the automation
+python -m playwright install chromium
+
+# Test the project
+python -m pytest tests/ -v
+
+# Install and activate the automatic daily downloader
+.\install.bat
