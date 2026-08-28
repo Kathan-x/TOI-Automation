@@ -1,0 +1,14 @@
+{
+  "edition": "Ahmedabad",
+  "download_dir": "Desktop/TOI Daily",
+  "retry_count": 3,
+  "retry_delay_seconds": 5,
+  "request_timeout_seconds": 30,
+  "notifications_enabled": true,
+  "log_level": "INFO",
+  "browser_fallback": {
+    "enabled": false,
+    "headless": true,
+    "timeout_ms": 45000
+  }
+}
