@@ -1,7 +1,8 @@
 # =====================================================================
 # Times of India Daily Downloader - Scheduled Task & Shortcut Setup (v2.0)
-# Configures Windows Task Scheduler with Logon & Daily Triggers
-# and creates the optional "Download Today's TOI" Desktop Shortcut.
+# Configures Windows Task Scheduler with 6:00 AM Daily Trigger
+# (with automatic missed-run catchup when laptop turns on)
+# and creates the manual "Download Today's TOI" Desktop Shortcut.
 # =====================================================================
 
 $ErrorActionPreference = "Stop"
@@ -16,16 +17,11 @@ Write-Host "Registering Windows Scheduled Task: $TaskName..." -ForegroundColor C
 # 1. Action: Launch silent VBScript runner
 $Action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$VbsPath`"" -WorkingDirectory $ScriptDir
 
-# 2. Triggers:
-# Trigger A: At User Logon with 30s delay for network initialization
-$TriggerLogon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$TriggerLogon.Delay = "PT30S"
-
-# Trigger B: Daily at 6:00 AM
+# 2. Trigger: Daily at 6:00 AM ONLY (NO logon trigger)
 $TriggerDaily = New-ScheduledTaskTrigger -Daily -At "06:00AM"
 
 # 3. Settings:
-# - StartWhenAvailable = $True (If laptop was OFF at 6:00 AM, run immediately when laptop turns on!)
+# - StartWhenAvailable = $True (If laptop was OFF at 6:00 AM, run catchup once when Windows turns on)
 # - AllowStartIfOnBatteries = $True (Runs on laptop battery power)
 # - DontStopIfGoingOnBatteries = $True
 # - MultipleInstances = IgnoreNew (Prevents concurrent duplicate runs)
@@ -43,35 +39,30 @@ try {
     Register-ScheduledTask `
         -TaskName $TaskName `
         -Action $Action `
-        -Trigger @($TriggerLogon, $TriggerDaily) `
+        -Trigger $TriggerDaily `
         -Settings $Settings `
-        -Description "Automatically downloads the daily Times of India Ahmedabad edition to Desktop\TOI Daily once per day." | Out-Null
+        -Description "Automatically downloads the daily Times of India Ahmedabad edition to Desktop\TOI Daily once per day at 6:00 AM." | Out-Null
 
     Write-Host "[SUCCESS] Task '$TaskName' successfully registered in Windows Task Scheduler!" -ForegroundColor Green
-    Write-Host "  - Trigger 1: On Windows User Logon (30s network delay)" -ForegroundColor Gray
-    Write-Host "  - Trigger 2: Daily at 6:00 AM (with automatic missed-run catchup)" -ForegroundColor Gray
+    Write-Host "  - Trigger: Daily at 6:00 AM (with automatic missed-run catchup if laptop was offline/off)" -ForegroundColor Gray
 }
 catch {
     Write-Warning "PowerShell Task Registration failed: $_. Falling back to schtasks.exe..."
-    & schtasks /Create /TN "$TaskName" /TR "wscript.exe `"$VbsPath`"" /SC ONLOGON /F /RL LIMITED | Out-Null
+    & schtasks /Create /TN "$TaskName" /TR "wscript.exe `"$VbsPath`"" /SC DAILY /ST 06:00 /F /RL LIMITED | Out-Null
     Write-Host "[SUCCESS] Task registered via schtasks.exe fallback." -ForegroundColor Green
 }
 
-# 5. Dual safety startup folder shortcut
+# 5. Clean up any legacy Startup folder shortcut to prevent logon triggers
 try {
     $StartupDir = [System.Environment]::GetFolderPath('Startup')
     $StartupShortcut = Join-Path $StartupDir "TOI_Daily.lnk"
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut1 = $WshShell.CreateShortcut($StartupShortcut)
-    $Shortcut1.TargetPath = "wscript.exe"
-    $Shortcut1.Arguments = "`"$VbsPath`""
-    $Shortcut1.WorkingDirectory = $ScriptDir
-    $Shortcut1.Description = "Daily Times of India Ahmedabad Downloader"
-    $Shortcut1.Save()
-    Write-Host "[SUCCESS] Dual startup safeguard shortcut created in Windows Startup folder." -ForegroundColor Green
+    if (Test-Path $StartupShortcut) {
+        Remove-Item -Path $StartupShortcut -Force -ErrorAction SilentlyContinue
+        Write-Host "[SUCCESS] Removed legacy logon shortcut from Windows Startup folder." -ForegroundColor Green
+    }
 }
 catch {
-    Write-Host "Note: Startup folder shortcut could not be written ($_); Task Scheduler is active." -ForegroundColor Gray
+    # Ignore cleanup error
 }
 
 # 6. Create Manual Desktop Shortcut: "Download Today's TOI.lnk"

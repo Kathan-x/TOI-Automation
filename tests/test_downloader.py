@@ -5,7 +5,7 @@ Tests for Downloader engine, Ahmedabad-only enforcement, and temp isolation.
 import datetime
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from PIL import Image
 from src.config import Config
 from src.downloader import Downloader
@@ -85,3 +85,39 @@ def test_download_failure_and_temp_cleanup(mock_net, mock_fetch, tmp_path: Path)
         assert path is None
         assert "Server connection refused" in err
         assert not temp_part_file.exists()
+
+
+def test_resolve_api_base_url_from_js(tmp_path: Path):
+    config = Config({"edition": "Ahmedabad"})
+    logger = setup_logger(tmp_path / "logs", "DEBUG")
+    downloader = Downloader(config, logger)
+
+    fake_js_content = 'const apiUrl = "https://d309t8g1g9oksh.cloudfront.net/toi/v1/download";'
+    with patch.object(downloader.session, "get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = fake_js_content
+        mock_get.return_value = mock_resp
+
+        discovered = downloader._resolve_api_base_url()
+        assert discovered == "https://d309t8g1g9oksh.cloudfront.net"
+
+
+def test_resolve_api_base_url_fallback_on_error(tmp_path: Path):
+    config = Config({"edition": "Ahmedabad"})
+    logger = setup_logger(tmp_path / "logs", "DEBUG")
+    downloader = Downloader(config, logger)
+
+    with patch.object(downloader.session, "get", side_effect=Exception("Network error")):
+        resolved = downloader._resolve_api_base_url()
+        assert "cloudfront.net" in resolved
+
+
+def test_downloader_session_headers(tmp_path: Path):
+    config = Config({"edition": "Ahmedabad"})
+    logger = setup_logger(tmp_path / "logs", "DEBUG")
+    downloader = Downloader(config, logger)
+
+    assert "indupaper.com" in downloader.session.headers.get("Referer", "")
+    assert "indupaper.com" in downloader.session.headers.get("Origin", "")
+

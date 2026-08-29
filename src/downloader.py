@@ -20,7 +20,7 @@ from typing import List, Optional, Tuple
 import requests
 from PIL import Image
 
-from .config import Config
+from .config import Config, WEBSITE_CONFIG
 from .net_checker import check_internet_connection
 from .cleanup import cleanup_temp_files
 from .validator import validate_pdf_file, safe_cleanup_corrupted_file
@@ -37,9 +37,11 @@ class Downloader:
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/125.0.0.0 Safari/537.36"
             ),
-            "Accept": "application/json, text/html, */*",
-            "Referer": "https://www.indupaper.com/times-of-india.html"
+            "Accept": "application/json, text/plain, */*",
+            "Referer": "https://www.indupaper.com/times-of-india.html",
+            "Origin": "https://www.indupaper.com"
         })
+        self._api_base_url: Optional[str] = None
 
     def get_target_pdf_path(self, target_date: datetime.date) -> Path:
         """Returns the full smart path: Desktop\\TOI Daily\\YYYY\\MonthName\\TOI_Ahmedabad_YYYY-MM-DD.pdf"""
@@ -138,6 +140,33 @@ class Downloader:
         duration = time.time() - start_time
         return False, None, 0, duration, f"All {self.config.retry_count} attempts failed. Last error: {last_error}"
 
+    def _resolve_api_base_url(self) -> str:
+        """
+        Dynamically discovers the current CloudFront API endpoint from InduPaper's TOI.js.
+        Falls back to WEBSITE_CONFIG['api_base_fallback'] if dynamic discovery is unavailable.
+        """
+        if self._api_base_url:
+            return self._api_base_url
+
+        fallback = WEBSITE_CONFIG.get("api_base_fallback", "https://d309t8g1g9oksh.cloudfront.net")
+        toi_js_url = WEBSITE_CONFIG.get("toi_js_url", "https://www.indupaper.com/TOI.js")
+
+        try:
+            self.logger.debug(f"Discovering live CloudFront API endpoint from {toi_js_url}...")
+            resp = self.session.get(toi_js_url, timeout=min(self.config.request_timeout_seconds, 10))
+            if resp.status_code == 200:
+                match = re.search(r"https://[a-zA-Z0-9_-]+\.cloudfront\.net", resp.text)
+                if match:
+                    discovered = match.group(0)
+                    self.logger.info(f"Discovered live CloudFront API base: {discovered}")
+                    self._api_base_url = discovered
+                    return discovered
+        except Exception as e:
+            self.logger.debug(f"Dynamic API discovery from JS encountered error ({e}). Using fallback base.")
+
+        self._api_base_url = fallback
+        return fallback
+
     def _fetch_ahmedabad_edition_images(self, target_date: datetime.date) -> List[Image.Image]:
         """
         Fetches all page images for the Ahmedabad edition from CloudFront API.
@@ -146,11 +175,12 @@ class Downloader:
         month = f"{target_date.month:02d}"
         year = f"{target_date.year}"
         city_slug = self.config.REQUIRED_CITY_SLUG
+        base_url = self._resolve_api_base_url()
 
         # 1. Try v2 endpoint
         try:
             url_v2 = (
-                f"https://d1h47qec6ptx2j.cloudfront.net/toi/v2/download"
+                f"{base_url}/toi/v2/download"
                 f"?citySlug={city_slug}&day={day}&month={month}&year={year}"
             )
             self.logger.debug(f"Querying v2 metadata for Ahmedabad: {url_v2}")
@@ -171,7 +201,7 @@ class Downloader:
 
         # 2. Fallback to v1 endpoint
         url_v1_base = (
-            f"https://d1h47qec6ptx2j.cloudfront.net/toi/v1/download"
+            f"{base_url}/toi/v1/download"
             f"?citySlug={city_slug}&day={day}&month={month}&year={year}"
         )
         self.logger.debug(f"Querying v1 endpoint for Ahmedabad: {url_v1_base}&page=1")

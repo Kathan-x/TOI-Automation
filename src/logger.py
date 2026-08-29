@@ -42,7 +42,13 @@ def setup_logger(logs_dir: Path, log_level: str = "INFO", target_date: datetime.
     except Exception as e:
         sys.stderr.write(f"Warning: Could not initialize log file handler at {log_file_path}: {e}\n")
 
-    # Console Handler
+    # Console Handler (UTF-8 safe on Windows)
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
     console_handler.setFormatter(formatter)

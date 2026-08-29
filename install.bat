@@ -46,7 +46,7 @@ echo   ONE-TIME SETUP COMPLETE!
 echo.
 echo   - Target Edition: Times of India (Ahmedabad ONLY)
 echo   - Destination: Desktop\TOI Daily\ (Contains ONLY .pdf files)
-echo   - Execution: Fully automatic every day when you open/start Windows
+echo   - Execution: Fully automatic every day at 6:00 AM
 echo   - Missed Runs: Automatically catches up if laptop was OFF at 6:00 AM
 echo.
 echo   You never have to run this manually. It will run silently each day.

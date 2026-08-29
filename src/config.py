@@ -23,11 +23,13 @@ DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.json"
 # Centralized Website Selectors for Future-Proof Maintenance
 WEBSITE_CONFIG = {
     "url": "https://www.indupaper.com/times-of-india.html",
+    "toi_js_url": "https://www.indupaper.com/TOI.js",
+    "api_base_fallback": "https://d309t8g1g9oksh.cloudfront.net",
     "selectors": {
         "date_input": "#TOIDate",
         "city_select": "#TOICity",
-        "pdf_button": "#TOIForm .btn-download",
-        "view_button": "#TOIForm .btn-view",
+        "pdf_button": "#TOIForm .btn-download, .btn-download, button.btn-download",
+        "view_button": "#TOIForm .btn-view, .btn-view, button.btn-view",
         "form_container": "#TOIForm"
     },
     "expected_city_value": "ahmedabad",
