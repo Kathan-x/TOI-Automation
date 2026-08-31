@@ -25,16 +25,22 @@ WEBSITE_CONFIG = {
     "url": "https://www.indupaper.com/times-of-india.html",
     "toi_js_url": "https://www.indupaper.com/TOI.js",
     "api_base_fallback": "https://d309t8g1g9oksh.cloudfront.net",
+    "api_fallbacks": [
+        "https://d309t8g1g9oksh.cloudfront.net"
+    ],
     "selectors": {
         "date_input": "#TOIDate",
         "city_select": "#TOICity",
         "pdf_button": "#TOIForm .btn-download, .btn-download, button.btn-download",
         "view_button": "#TOIForm .btn-view, .btn-view, button.btn-view",
-        "form_container": "#TOIForm"
+        "form_container": "#TOIForm",
+        "preview_container": "#preview",
+        "download_group": "#TOIForm .btn-group"
     },
     "expected_city_value": "ahmedabad",
     "expected_city_text": "Ahmedabad",
-    "publication_code": "toiac"
+    "publication_code": "toiac",
+    "min_pages_threshold": 4
 }
 
 

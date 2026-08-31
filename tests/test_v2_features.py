@@ -150,17 +150,20 @@ def test_self_healing_config_regeneration(tmp_path: Path):
         assert data["edition"] == "Ahmedabad"
 
 
-@patch("socket.socket")
-def test_internet_checker_online(mock_socket):
-    mock_instance = MagicMock()
-    mock_socket.return_value = mock_instance
+@patch("urllib.request.urlopen")
+def test_internet_checker_online(mock_urlopen):
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.__enter__.return_value = mock_resp
+    mock_urlopen.return_value = mock_resp
     assert check_internet_connection(timeout_seconds=0.5, retries=1)
 
 
 @patch("socket.socket")
-def test_internet_checker_offline(mock_socket):
-    import socket
+@patch("urllib.request.urlopen", side_effect=Exception("Connection refused"))
+def test_internet_checker_offline(mock_urlopen, mock_socket):
     mock_instance = MagicMock()
+    import socket
     mock_instance.connect.side_effect = socket.timeout("timed out")
     mock_socket.return_value = mock_instance
     assert not check_internet_connection(timeout_seconds=0.1, retries=1)

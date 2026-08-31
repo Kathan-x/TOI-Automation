@@ -148,6 +148,25 @@ def run():
             success, saved_path, pages_count, duration_sec, error_msg = downloader.download_daily_paper(
                 target_date, edition
             )
+            # Automatic fallback to Browser Automation if direct endpoint failed
+            if not success:
+                try:
+                    import playwright
+                    logger.info("Direct API retrieval failed. Attempting browser automation fallback...")
+                    browser_automator = BrowserAutomator(config, logger)
+                    b_start = datetime.datetime.now()
+                    b_success, b_saved_path, b_pages, b_err = browser_automator.download_via_browser(
+                        target_date, edition, final_pdf_path
+                    )
+                    if b_success and b_saved_path:
+                        success, saved_path, pages_count, error_msg = b_success, b_saved_path, b_pages, None
+                        duration_sec += (datetime.datetime.now() - b_start).total_seconds()
+                    else:
+                        logger.warning(f"Browser fallback was unable to retrieve paper: {b_err}")
+                except ImportError:
+                    logger.debug("Playwright not installed; skipping browser fallback.")
+                except Exception as b_exc:
+                    logger.debug(f"Browser fallback encountered exception: {b_exc}")
 
         # 10. Handle Result, State & History Recording
         if success and saved_path and saved_path.exists():
@@ -186,8 +205,9 @@ def run():
                 duration_seconds=duration_sec,
                 error_message=error_msg or "Download failed"
             )
-            logger.error(f"Failed to download Ahmedabad newspaper for {date_str}: {error_msg}")
-            notifier.notify_failure(error_summary=error_msg or "Download failed", edition=edition, logger=logger)
+            logger.warning(f"Ahmedabad newspaper unavailable for {date_str}: {error_msg}. Will retry on next scheduled interval.")
+            if args.force or sys.stdin.isatty():
+                notifier.notify_failure(error_summary=error_msg or "Download failed", edition=edition, logger=logger)
             sys.exit(1)
 
     except Exception as e:

@@ -65,25 +65,31 @@ During installation, a shortcut named **`Download Today's TOI`** is placed on yo
 
 ---
 
-## ⏰ How Automatic Daily Execution Works
-
+## ⏰ How Automatic Daily Execution & Retries Work
+ 
 ```mermaid
 graph TD
-    A[Start Laptop / Log into Windows] --> B[Downloader Starts Silently in Background]
+    A[First Windows Logon of Day / 6:00 AM Overnight Trigger] --> B[Downloader Starts Silently in Background]
     B --> C{Is Today's Newspaper Already on Desktop?}
-    C -->|Yes| D[Exit Quietly in < 0.1s - No Internet Used]
+    C -->|Yes| D[Exit Quietly in < 0.05s - No Internet Used]
     C -->|No| E[Check Internet Connection]
-    E -->|Connected| F[Fetch Ahmedabad Edition Page Scans]
-    F --> G[Compile High-Resolution PDF]
+    E -->|Connected| F[Discover Live API Endpoint & Fetch Page Scans]
+    F -->|Unavailable / Not Published Yet| L[Exit Gracefully; Task Scheduler Retries Every 30 Mins]
+    F -->|Pages Retrieved| G[Compile High-Resolution PDF]
     G --> H[Validate Complete PDF Integrity]
-    H --> I[Save to Desktop -> TOI Daily -> Year -> Month]
+    H --> I[Atomic Move to Desktop -> TOI Daily -> Year -> Month]
     I --> J[Display Windows Toast Notification]
-    J --> K[Exit Cleanly]
-    E -->|Offline| L[Wait and Retry Automatically Later]
+    J --> K[Exit Cleanly - Subsequent Logins Today Skip Instantly]
 ```
 
-### What if my laptop was turned OFF at 6:00 AM?
-No problem! The task is configured with **automatic missed-run catchup**. As soon as you turn on your laptop and log into Windows, it will check if today's paper is missing and download it immediately.
+### Scheduling & Reliability Guarantees:
+1. **First Laptop Use of the Day**: When you first log into Windows each day, the downloader activates automatically in the background.
+2. **Instant Skip on Success**: If today's paper is already saved and verified, it exits silently in under 50ms without network calls or notifications. Subsequent restarts/logins that same day do nothing.
+3. **Automatic 30-Minute Retries**: If the paper has not yet been published when you first log in (e.g. early morning before 6:30 AM), the background scheduler automatically retries every 30 minutes until it becomes available.
+4. **Overnight Laptop Support**: If your laptop is left powered on overnight, the 6:00 AM daily trigger starts checking for the new day's edition without requiring a restart.
+5. **No Fixed Cutoff**: Retries continue throughout the day until today's paper is successfully downloaded.
+6. **Next Day Fresh Cycle**: When tomorrow arrives, the first login starts a fresh cycle for the new date.
+7. **Optional Manual Shortcut**: You can double-click **"Download Today's TOI"** on your Desktop at any time.
 
 ---
 

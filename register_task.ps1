@@ -17,11 +17,17 @@ Write-Host "Registering Windows Scheduled Task: $TaskName..." -ForegroundColor C
 # 1. Action: Launch silent VBScript runner
 $Action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$VbsPath`"" -WorkingDirectory $ScriptDir
 
-# 2. Trigger: Daily at 6:00 AM ONLY (NO logon trigger)
+# 2. Triggers:
+# - Trigger 1 (Logon): Runs on FIRST Windows logon of the day (checks/downloads immediately)
+# - Trigger 2 (Daily Schedule): Daily at 6:00 AM with 30-minute retries across the day (for overnight runs and background retries)
+$TriggerLogon = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERNAME"
 $TriggerDaily = New-ScheduledTaskTrigger -Daily -At "06:00AM"
+$TriggerDaily.Repetition = (New-ScheduledTaskTrigger -Once -At "06:00AM" -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Hours 18)).Repetition
+$TriggerDaily.Repetition.StopAtDurationEnd = $False
+$Triggers = @($TriggerLogon, $TriggerDaily)
 
 # 3. Settings:
-# - StartWhenAvailable = $True (If laptop was OFF at 6:00 AM, run catchup once when Windows turns on)
+# - StartWhenAvailable = $True (If laptop was OFF, catch up when laptop turns on)
 # - AllowStartIfOnBatteries = $True (Runs on laptop battery power)
 # - DontStopIfGoingOnBatteries = $True
 # - MultipleInstances = IgnoreNew (Prevents concurrent duplicate runs)
@@ -32,6 +38,8 @@ $Settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 15) `
     -MultipleInstances IgnoreNew
 
+$Principal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType Interactive
+
 # 4. Register or Update Task in Windows Task Scheduler
 try {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
@@ -39,16 +47,19 @@ try {
     Register-ScheduledTask `
         -TaskName $TaskName `
         -Action $Action `
-        -Trigger $TriggerDaily `
+        -Trigger $Triggers `
         -Settings $Settings `
-        -Description "Automatically downloads the daily Times of India Ahmedabad edition to Desktop\TOI Daily once per day at 6:00 AM." | Out-Null
+        -Principal $Principal `
+        -Description "Automatically downloads the daily Times of India Ahmedabad edition on first Windows logon of the day, with daily 6:00 AM schedule and 30-minute retries." | Out-Null
 
     Write-Host "[SUCCESS] Task '$TaskName' successfully registered in Windows Task Scheduler!" -ForegroundColor Green
-    Write-Host "  - Trigger: Daily at 6:00 AM (with automatic missed-run catchup if laptop was offline/off)" -ForegroundColor Gray
+    Write-Host "  - Trigger 1: Windows Logon (runs on first login of the day, fast-skips subsequent logins)" -ForegroundColor Gray
+    Write-Host "  - Trigger 2: Daily at 6:00 AM with 30-minute retries across the day (for overnight runs & auto-retries)" -ForegroundColor Gray
 }
 catch {
     Write-Warning "PowerShell Task Registration failed: $_. Falling back to schtasks.exe..."
-    & schtasks /Create /TN "$TaskName" /TR "wscript.exe `"$VbsPath`"" /SC DAILY /ST 06:00 /F /RL LIMITED | Out-Null
+    & schtasks /Create /TN "$TaskName" /TR "wscript.exe `"$VbsPath`"" /SC ONLOGON /F /RL LIMITED | Out-Null
+    & schtasks /Create /TN "${TaskName}_Daily" /TR "wscript.exe `"$VbsPath`"" /SC DAILY /ST 06:00 /RI 30 /DU 18:00 /F /RL LIMITED | Out-Null
     Write-Host "[SUCCESS] Task registered via schtasks.exe fallback." -ForegroundColor Green
 }
 

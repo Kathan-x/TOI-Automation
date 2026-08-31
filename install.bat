@@ -32,7 +32,7 @@ echo.
 echo [3/4] Initializing directories...
 python -c "from src.config import load_config; c = load_config(); print('  AppData directory:', c.app_data_dir); print('  Desktop Archive:', c.download_dir)"
 
-:: 4. Register Windows Scheduled Task with Dual Triggers and Catch-up
+:: 4. Register Windows Scheduled Task with Dual Triggers (First Logon of Day + Daily Schedule)
 echo.
 echo [4/4] Configuring automated Windows Task Scheduler...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0register_task.ps1"
@@ -46,8 +46,12 @@ echo   ONE-TIME SETUP COMPLETE!
 echo.
 echo   - Target Edition: Times of India (Ahmedabad ONLY)
 echo   - Destination: Desktop\TOI Daily\ (Contains ONLY .pdf files)
-echo   - Execution: Fully automatic every day at 6:00 AM
-echo   - Missed Runs: Automatically catches up if laptop was OFF at 6:00 AM
+echo   - Automatic Run: Runs on FIRST Windows login of the day
+echo   - Overnight Laptop: Automatically runs at 6:00 AM with background retries
+echo   - Zero Disruption: Subsequent logins today skip instantly (<0.05s)
+echo.
+echo   You never have to run this manually. It will run silently each day.
+echo ======================================================================
 echo.
 echo   You never have to run this manually. It will run silently each day.
 echo ======================================================================
