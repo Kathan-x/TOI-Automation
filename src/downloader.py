@@ -241,8 +241,10 @@ class Downloader:
         )
         self.logger.debug(f"[Strategy B] Querying v1 endpoint: {url_v1_base}&page=1")
         resp1 = self.session.get(f"{url_v1_base}&page=1", timeout=self.config.request_timeout_seconds)
-        if resp1.status_code != 200:
-            raise RuntimeError(f"v1 endpoint returned HTTP {resp1.status_code}. Paper not available yet.")
+        if resp1.status_code == 400:
+            raise RuntimeError("Paper not published yet on InduPaper for this date (HTTP 400).")
+        elif resp1.status_code != 200:
+            raise RuntimeError(f"v1 endpoint returned HTTP {resp1.status_code}.")
 
         data1 = resp1.json()
         if not data1 or not data1.get("data"):

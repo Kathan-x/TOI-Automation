@@ -206,7 +206,7 @@ def run():
                 error_message=error_msg or "Download failed"
             )
             logger.warning(f"Ahmedabad newspaper unavailable for {date_str}: {error_msg}. Will retry on next scheduled interval.")
-            if args.force or sys.stdin.isatty():
+            if args.force:
                 notifier.notify_failure(error_summary=error_msg or "Download failed", edition=edition, logger=logger)
             sys.exit(1)
 

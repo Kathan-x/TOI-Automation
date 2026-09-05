@@ -48,10 +48,7 @@ echo   - Target Edition: Times of India (Ahmedabad ONLY)
 echo   - Destination: Desktop\TOI Daily\ (Contains ONLY .pdf files)
 echo   - Automatic Run: Runs on FIRST Windows login of the day
 echo   - Overnight Laptop: Automatically runs at 6:00 AM with background retries
-echo   - Zero Disruption: Subsequent logins today skip instantly (<0.05s)
-echo.
-echo   You never have to run this manually. It will run silently each day.
-echo ======================================================================
+echo   - Zero Disruption: Subsequent logins today skip instantly (under 0.05s)
 echo.
 echo   You never have to run this manually. It will run silently each day.
 echo ======================================================================

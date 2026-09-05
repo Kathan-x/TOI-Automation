@@ -143,6 +143,13 @@ class Config:
         desktop = get_desktop_dir()
         return desktop / "TOI Daily"
 
+    @property
+    def download_dir(self) -> Path:
+        """
+        Alias for base_archive_dir for backward compatibility with installer.
+        """
+        return self.base_archive_dir
+
     def get_month_archive_dir(self, target_date: datetime.date) -> Path:
         """
         Returns the smart Year\\Month directory path:

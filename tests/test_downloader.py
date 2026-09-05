@@ -251,3 +251,24 @@ def test_downloader_session_headers(tmp_path: Path):
 
     assert "indupaper.com" in downloader.session.headers.get("Referer", "")
     assert "indupaper.com" in downloader.session.headers.get("Origin", "")
+
+
+def test_unpublished_paper_http_400_handling(tmp_path: Path):
+    config = Config({"edition": "Ahmedabad"})
+    logger = setup_logger(tmp_path / "logs", "DEBUG")
+    downloader = Downloader(config, logger)
+    downloader._api_base_url = "https://d309t8g1g9oksh.cloudfront.net"
+
+    def mock_get(url, timeout=None):
+        resp = MagicMock()
+        resp.status_code = 400
+        resp.text = '{"status":"error","data":null,"message":"BAD REQUEST"}'
+        return resp
+
+    with patch.object(downloader.session, "get", side_effect=mock_get):
+        try:
+            downloader._fetch_ahmedabad_edition_images(datetime.date(2026, 9, 5))
+            assert False, "Should raise RuntimeError for HTTP 400"
+        except RuntimeError as e:
+            assert "not published yet" in str(e).lower()
+

@@ -42,6 +42,13 @@ def test_year_month_folder_hierarchy_does_not_create_directories(tmp_path: Path)
         assert not (tmp_path / "TOI Daily" / "2027").exists()
 
 
+def test_config_download_dir_alias(tmp_path: Path):
+    with patch.object(Config, "base_archive_dir", new_callable=lambda: property(lambda self: tmp_path / "TOI Daily")):
+        config = Config({"edition": "Ahmedabad"})
+        assert config.download_dir == tmp_path / "TOI Daily"
+        assert config.download_dir == config.base_archive_dir
+
+
 def test_prune_empty_archive_folders(tmp_path: Path):
     archive_dir = tmp_path / "TOI Daily"
     
