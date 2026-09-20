@@ -35,6 +35,31 @@ If WScript.Arguments.Count > 0 Then
     Next
 End If
 
+Dim Stream, JsonText, LastDate, LastStatus
+
+Function GetTopLevelJsonField(jsonStr, fieldName)
+    Dim regEx, matches
+    Set regEx = New RegExp
+    regEx.Pattern = "(?:^|[\r\n,{])\s*""" & fieldName & """\s*:\s*""([^""]*)"""
+    regEx.IgnoreCase = True
+    regEx.Global = False
+
+    ' Strip nested history block so nested properties cannot falsely match
+    Dim cleanStr, regHistory
+    Set regHistory = New RegExp
+    regHistory.Pattern = """history""\s*:\s*\{[\s\S]*?\}(?=\s*[,}\r\n])"
+    regHistory.IgnoreCase = True
+    regHistory.Global = True
+    cleanStr = regHistory.Replace(jsonStr, """history"": {}")
+
+    If regEx.Test(cleanStr) Then
+        Set matches = regEx.Execute(cleanStr)
+        GetTopLevelJsonField = matches(0).SubMatches(0)
+    Else
+        GetTopLevelJsonField = ""
+    End If
+End Function
+
 If Not ForceRun Then
     TodayDate = Now
     YearStr = CStr(Year(TodayDate))
@@ -72,13 +97,14 @@ If Not ForceRun Then
     StateFile = AppData & "\TOI-Daily\state.json"
     If FSO.FileExists(StateFile) Then
         On Error Resume Next
-        Dim Stream, JsonText
         Set Stream = FSO.OpenTextFile(StateFile, 1)
         If Err.Number = 0 Then
             JsonText = Stream.ReadAll
             Stream.Close
-            If InStr(JsonText, """last_successful_date"": """ & DateStr & """") > 0 And InStr(JsonText, """status"": ""success""") > 0 Then
-                ' State verifies today completed. Exit instantly!
+            LastDate = GetTopLevelJsonField(JsonText, "last_successful_date")
+            LastStatus = GetTopLevelJsonField(JsonText, "status")
+            If LastDate = DateStr And LCase(LastStatus) = "success" Then
+                ' State strictly verifies today completed. Exit instantly!
                 WScript.Quit 0
             End If
         End If

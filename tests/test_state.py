@@ -67,3 +67,39 @@ def test_date_transitions(tmp_path: Path):
 
     assert mgr.is_date_completed("2026-08-26")
     assert mgr.is_date_completed("2026-08-27")
+
+
+def test_record_backfill_result_preserves_today_state(tmp_path: Path):
+    state_file = tmp_path / "state.json"
+    mgr = StateManager(state_file)
+
+    # 1. Today (2026-09-07) was completed successfully
+    today_pdf = tmp_path / "TOI_Ahmedabad_2026-09-07.pdf"
+    today_pdf.write_bytes(b"today")
+    mgr.record_success("2026-09-07", today_pdf, page_count=20, size_bytes=2000000)
+
+    assert mgr.load_state()["last_successful_date"] == "2026-09-07"
+    assert mgr.load_state()["status"] == "success"
+
+    # 2. Backfill for older date (2026-09-05) fails
+    mgr.record_backfill_result("2026-09-05", success=False, error_message="HTTP 400")
+
+    state = mgr.load_state()
+    # Top-level status MUST remain "success", last_successful_date MUST remain "2026-09-07"
+    assert state["status"] == "success"
+    assert state["last_successful_date"] == "2026-09-07"
+    # History records the failed attempt and remains retryable
+    assert not mgr.is_date_completed("2026-09-05")
+    assert state["history"]["2026-09-05"]["status"] == "failed"
+
+    # 3. Backfill for 2026-09-06 succeeds
+    past_pdf = tmp_path / "TOI_Ahmedabad_2026-09-06.pdf"
+    past_pdf.write_bytes(b"past")
+    mgr.record_backfill_result("2026-09-06", success=True, file_path=past_pdf, page_count=18, size_bytes=1800000)
+
+    state = mgr.load_state()
+    # Top-level status MUST remain "success", last_successful_date must NOT regress to 2026-09-06
+    assert state["status"] == "success"
+    assert state["last_successful_date"] == "2026-09-07"
+    assert mgr.is_date_completed("2026-09-06")
+    assert state["history"]["2026-09-06"]["status"] == "success"

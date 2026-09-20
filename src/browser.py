@@ -131,8 +131,14 @@ class BrowserAutomator:
                         output_file.unlink()
                     temp_download_path.rename(output_file)
 
-                    self.logger.info(f"Browser download successfully saved to: {output_file}")
-                    return True, output_file, 1, None
+                    from .validator import validate_pdf_file
+                    is_valid, num_pages, val_msg = validate_pdf_file(output_file)
+                    if not is_valid:
+                        output_file.unlink(missing_ok=True)
+                        return False, None, 0, f"Browser PDF failed validation: {val_msg}"
+
+                    self.logger.info(f"Browser download successfully saved to: {output_file} ({num_pages} pages)")
+                    return True, output_file, num_pages, None
                 else:
                     self._save_diagnostic_snapshot(page, date_str, "missing_pdf_button")
                     browser.close()

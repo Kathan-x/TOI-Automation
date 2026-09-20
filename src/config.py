@@ -25,6 +25,7 @@ WEBSITE_CONFIG = {
     "url": "https://www.indupaper.com/times-of-india.html",
     "toi_js_url": "https://www.indupaper.com/TOI.js",
     "api_base_fallback": "https://d309t8g1g9oksh.cloudfront.net",
+    "api_v3_endpoint": "/toi/v3/download",
     "api_fallbacks": [
         "https://d309t8g1g9oksh.cloudfront.net"
     ],
@@ -120,6 +121,8 @@ class Config:
         self.notifications_enabled: bool = bool(config_data.get("notifications_enabled", True))
         self.log_level: str = config_data.get("log_level", "INFO").upper()
         self.check_updates_weekly: bool = bool(config_data.get("check_updates_weekly", True))
+        self.max_backfill_days: int = int(config_data.get("max_backfill_days", 31))
+        self.backfill_enabled: bool = bool(config_data.get("backfill_enabled", True))
 
         browser_fb = config_data.get("browser_fallback", {})
         self.browser_fallback_enabled: bool = bool(browser_fb.get("enabled", False))
@@ -219,6 +222,8 @@ def load_config(custom_path: Path = None, logger: Optional[logging.Logger] = Non
         "notifications_enabled": True,
         "log_level": "INFO",
         "check_updates_weekly": True,
+        "max_backfill_days": 31,
+        "backfill_enabled": True,
         "browser_fallback": {
             "enabled": False,
             "headless": True,

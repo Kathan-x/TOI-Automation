@@ -1,13 +1,9 @@
 """
-Production Downloader Engine for Times of India Daily (v2.0).
-- Strictly downloads the Ahmedabad edition.
-- Multi-tier source discovery: scans TOI.js, times-of-india.html, and verified CloudFront fallbacks.
-- Multi-strategy retrieval:
-    * Strategy A: Direct API v2 (batch JSON metadata)
-    * Strategy B: Paginated API v1 (individual page metadata)
-    * Strategy C: Direct image proxy fallback (weserv proxy / direct stream)
-    * Strategy D: Headless Browser automation fallback (Playwright)
-- Detailed categorization: Distinguishes between unavailable (not published yet), network errors, server errors, and corrupted files.
+Production Downloader Engine for Times of India Daily (v3.0).
+- Strictly downloads the Ahmedabad edition (citySlug=ahmedabad).
+- Multi-tier source discovery: scans TOI.js, times-of-india.html, and verified CloudFront endpoints.
+- Active Strategy: Streamlined V3 Page API (/toi/v3/download) fetching high-resolution base64 page images.
+- Detailed categorization: Distinguishes between unavailable (HTTP 400 not published yet), network errors, server errors, and corrupted files.
 - Atomic file safety: Writes to %LOCALAPPDATA%\\TOI-Daily\\temp\\*.part and moves to permanent archive only upon full PDF validation.
 """
 
@@ -15,7 +11,6 @@ import base64
 import datetime
 import io
 import logging
-import os
 import re
 import shutil
 import time
@@ -201,7 +196,8 @@ class Downloader:
 
     def _fetch_ahmedabad_edition_images(self, target_date: datetime.date) -> List[Image.Image]:
         """
-        Fetches all page images for Ahmedabad edition across Strategy A (v2) and Strategy B (v1).
+        Fetches all page images for the Ahmedabad edition using the active InduPaper V3 API.
+        Streams each page sequentially from /toi/v3/download?citySlug=ahmedabad&day=DD&month=MM&year=YYYY&page=N.
         """
         day = f"{target_date.day:02d}"
         month = f"{target_date.month:02d}"
@@ -209,62 +205,41 @@ class Downloader:
         city_slug = self.config.REQUIRED_CITY_SLUG
         base_url = self._resolve_api_base_url()
 
-        # Strategy A: v2 endpoint
-        try:
-            url_v2 = (
-                f"{base_url}/toi/v2/download"
-                f"?citySlug={city_slug}&day={day}&month={month}&year={year}"
-            )
-            self.logger.debug(f"[Strategy A] Querying v2 endpoint: {url_v2}")
-            resp = self.session.get(url_v2, timeout=self.config.request_timeout_seconds)
-            if resp.status_code == 200:
-                data = resp.json()
-                html = data.get("data", {}).get("htmlContent", "")
-                img_srcs = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html)
-
-                # Filter out step-by-step tutorial placeholder images
-                valid_srcs = [src for src in img_srcs if "download-steps" not in src and "preview.png" not in src]
-                if valid_srcs:
-                    self.logger.info(f"[Strategy A] v2 returned {len(valid_srcs)} Ahmedabad page sources.")
-                    images = self._download_image_list(valid_srcs)
-                    if images and len(images) > 0:
-                        return images
-            else:
-                self.logger.debug(f"[Strategy A] v2 returned HTTP {resp.status_code}")
-        except Exception as e:
-            self.logger.debug(f"[Strategy A] v2 fetch encountered error: {e}. Falling back to Strategy B (v1)...")
-
-        # Strategy B: v1 endpoint
-        url_v1_base = (
-            f"{base_url}/toi/v1/download"
+        url_v3_base = (
+            f"{base_url}/toi/v3/download"
             f"?citySlug={city_slug}&day={day}&month={month}&year={year}"
         )
-        self.logger.debug(f"[Strategy B] Querying v1 endpoint: {url_v1_base}&page=1")
-        resp1 = self.session.get(f"{url_v1_base}&page=1", timeout=self.config.request_timeout_seconds)
+
+        self.logger.debug(f"[Strategy V3] Querying page 1: {url_v3_base}&page=1")
+        resp1 = self.session.get(f"{url_v3_base}&page=1", timeout=self.config.request_timeout_seconds)
+
         if resp1.status_code == 400:
             raise RuntimeError("Paper not published yet on InduPaper for this date (HTTP 400).")
         elif resp1.status_code != 200:
-            raise RuntimeError(f"v1 endpoint returned HTTP {resp1.status_code}.")
+            raise RuntimeError(f"V3 endpoint returned HTTP {resp1.status_code}.")
 
         data1 = resp1.json()
         if not data1 or not data1.get("data"):
-            raise RuntimeError("v1 response contains no newspaper data.")
+            raise RuntimeError("V3 response contains no newspaper data.")
 
         total_pages = int(data1.get("data", {}).get("totalPage", 0))
         if total_pages == 0:
-            raise RuntimeError("v1 reports 0 total pages for Ahmedabad edition.")
+            raise RuntimeError("V3 reports 0 total pages for Ahmedabad edition.")
 
-        self.logger.info(f"[Strategy B] v1 reports {total_pages} total pages for Ahmedabad edition.")
+        self.logger.info(f"[Strategy V3] V3 reports {total_pages} total pages for Ahmedabad edition on {target_date}.")
 
         images = []
         page1_html = data1.get("data", {}).get("htmlContent", "")
         img1 = self._parse_image_from_html(page1_html)
         if img1:
             images.append(img1)
+            self.logger.debug(f"Retrieved Ahmedabad page 1/{total_pages}...")
+        else:
+            raise RuntimeError("Failed to decode image for page 1.")
 
         for page_num in range(2, total_pages + 1):
-            page_url = f"{url_v1_base}&page={page_num}"
-            self.logger.debug(f"Fetching v1 page {page_num}/{total_pages}...")
+            page_url = f"{url_v3_base}&page={page_num}"
+            self.logger.debug(f"Fetching V3 page {page_num}/{total_pages}...")
             p_resp = self.session.get(page_url, timeout=self.config.request_timeout_seconds)
             if p_resp.status_code == 200:
                 p_data = p_resp.json()
@@ -272,19 +247,11 @@ class Downloader:
                 p_img = self._parse_image_from_html(p_html)
                 if p_img:
                     images.append(p_img)
-
-        return images
-
-    def _download_image_list(self, img_urls: List[str]) -> List[Image.Image]:
-        """Downloads a list of image URLs (or decodes base64) into PIL Images."""
-        images = []
-        for idx, src in enumerate(img_urls, start=1):
-            self.logger.debug(f"Retrieving Ahmedabad page {idx}/{len(img_urls)}...")
-            img = self._load_image_from_source(src)
-            if img:
-                images.append(img)
+                else:
+                    self.logger.warning(f"Could not parse image on page {page_num}")
             else:
-                self.logger.warning(f"Could not load image for page {idx}")
+                self.logger.warning(f"Page {page_num} returned HTTP {p_resp.status_code}")
+
         return images
 
     def _parse_image_from_html(self, html_snippet: str) -> Optional[Image.Image]:

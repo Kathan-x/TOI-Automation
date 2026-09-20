@@ -4,7 +4,6 @@ Ensures downloaded files are uncorrupted, valid, and contain actual newspaper pa
 """
 
 import logging
-import os
 from pathlib import Path
 from typing import Tuple
 from pypdf import PdfReader

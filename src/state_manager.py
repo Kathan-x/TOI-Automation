@@ -61,6 +61,22 @@ class StateManager:
             return True
         return False
 
+    def get_last_successful_date(self) -> Optional[str]:
+        """
+        Finds the most recent successful date recorded in state.
+        Checks both top-level last_successful_date and history dictionary.
+        """
+        state = self.load_state()
+        dates = []
+        if state.get("last_successful_date"):
+            dates.append(state["last_successful_date"])
+        for d, rec in state.get("history", {}).items():
+            if isinstance(rec, dict) and rec.get("status") == "success":
+                dates.append(d)
+        if dates:
+            return max(dates)
+        return None
+
     def record_success(
         self,
         date_str: str,
@@ -106,5 +122,51 @@ class StateManager:
             "error": error_message,
             "timestamp": now_iso
         }
+
+        self._save_state_atomic(state)
+
+    def record_backfill_result(
+        self,
+        date_str: str,
+        success: bool,
+        file_path: Optional[Path] = None,
+        page_count: int = 0,
+        size_bytes: int = 0,
+        error_message: Optional[str] = None
+    ) -> None:
+        """
+        Records the outcome of a backfill attempt for a historical date.
+        Guarantees:
+        - Never overwrites today's top-level status with a historical failure or success.
+        - Never regresses last_successful_date to an older date if a newer date is already recorded.
+        - Accurately updates state['history'][date_str].
+        - Failed downloads remain retryable (status: 'failed').
+        """
+        state = self.load_state()
+        now_iso = datetime.datetime.now().isoformat()
+
+        if "history" not in state or not isinstance(state["history"], dict):
+            state["history"] = {}
+
+        if success and file_path:
+            state["history"][date_str] = {
+                "status": "success",
+                "file": str(file_path.resolve()),
+                "pages": page_count,
+                "size_bytes": size_bytes,
+                "timestamp": now_iso
+            }
+            # Only update top-level last_successful_date if no newer date is recorded
+            current_last_date = state.get("last_successful_date")
+            if not current_last_date or date_str >= current_last_date:
+                state["last_successful_date"] = date_str
+                state["last_successful_file"] = str(file_path.resolve())
+        else:
+            state["history"][date_str] = {
+                "status": "failed",
+                "error": error_message or "Backfill download failed",
+                "timestamp": now_iso
+            }
+            # Historical failure MUST NOT overwrite top-level status if today was successful
 
         self._save_state_atomic(state)

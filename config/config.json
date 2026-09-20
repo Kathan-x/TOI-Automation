@@ -6,6 +6,8 @@
   "request_timeout_seconds": 30,
   "notifications_enabled": true,
   "log_level": "INFO",
+  "max_backfill_days": 31,
+  "backfill_enabled": true,
   "browser_fallback": {
     "enabled": false,
     "headless": true,

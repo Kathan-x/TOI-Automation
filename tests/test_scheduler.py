@@ -88,16 +88,105 @@ def test_vbs_lightweight_gate_structure():
     assert "--force" in content
 
 
-def test_vbs_gate_exits_instantly_when_today_completed():
-    """Executes cscript.exe on run_daily.vbs when today's paper exists to ensure exit code 0 in milliseconds."""
+def test_vbs_strict_state_parser_cases(tmp_path: Path):
+    """
+    Executes VBScript engine directly on the exact GetTopLevelJsonField implementation
+    extracted from run_daily.vbs to verify strict checking:
+    1. Rejects loose matching when history has 'success' but top-level status is 'failed'.
+    2. Accepts genuine top-level 'success' for today.
+    3. Rejects previous day's 'success' when today is pending.
+    """
     vbs_path = Path(__file__).resolve().parent.parent / "run_daily.vbs"
-    res = subprocess.run(
-        ["cscript.exe", "//NoLogo", str(vbs_path)],
-        capture_output=True,
-        text=True,
-        timeout=5
-    )
-    assert res.returncode == 0
+    vbs_code = vbs_path.read_text(encoding="utf-8")
+
+    assert "Function GetTopLevelJsonField" in vbs_code
+    func_start = vbs_code.find("Function GetTopLevelJsonField")
+    func_end = vbs_code.find("End Function", func_start) + len("End Function")
+    func_code = vbs_code[func_start:func_end]
+
+    test_script = tmp_path / "test_parser.vbs"
+    test_script.write_text(f"""Option Explicit
+{func_code}
+
+Dim mode, json, resDate, resStatus
+mode = WScript.Arguments(0)
+
+If mode = "case_failed_with_success_in_history" Then
+    json = "{{""last_successful_date"": ""2026-09-07"", ""status"": ""failed"", ""history"": {{""2026-09-04"": {{""status"": ""success""}}}}}}"
+    resDate = GetTopLevelJsonField(json, "last_successful_date")
+    resStatus = GetTopLevelJsonField(json, "status")
+    If resDate = "2026-09-07" And LCase(resStatus) = "success" Then
+        WScript.Echo "SKIP"
+    Else
+        WScript.Echo "RETRY"
+    End If
+ElseIf mode = "case_genuine_today_success" Then
+    json = "{{""last_successful_date"": ""2026-09-07"", ""status"": ""success"", ""history"": {{""2026-09-07"": {{""status"": ""success""}}}}}}"
+    resDate = GetTopLevelJsonField(json, "last_successful_date")
+    resStatus = GetTopLevelJsonField(json, "status")
+    If resDate = "2026-09-07" And LCase(resStatus) = "success" Then
+        WScript.Echo "SKIP"
+    Else
+        WScript.Echo "RETRY"
+    End If
+ElseIf mode = "case_yesterday_success" Then
+    json = "{{""last_successful_date"": ""2026-09-06"", ""status"": ""success"", ""history"": {{""2026-09-06"": {{""status"": ""success""}}}}}}"
+    resDate = GetTopLevelJsonField(json, "last_successful_date")
+    resStatus = GetTopLevelJsonField(json, "status")
+    If resDate = "2026-09-07" And LCase(resStatus) = "success" Then
+        WScript.Echo "SKIP"
+    Else
+        WScript.Echo "RETRY"
+    End If
+End If
+""", encoding="utf-8")
+
+    # 1. Today failed, but past history has 'status: success' -> MUST RETRY (must NOT skip)
+    res1 = subprocess.run(["cscript.exe", "//NoLogo", str(test_script), "case_failed_with_success_in_history"], capture_output=True, text=True, check=True)
+    assert res1.stdout.strip() == "RETRY"
+
+    # 2. Genuine today success -> MUST SKIP
+    res2 = subprocess.run(["cscript.exe", "//NoLogo", str(test_script), "case_genuine_today_success"], capture_output=True, text=True, check=True)
+    assert res2.stdout.strip() == "SKIP"
+
+    # 3. Yesterday was success, today is pending -> MUST RETRY (must NOT skip)
+    res3 = subprocess.run(["cscript.exe", "//NoLogo", str(test_script), "case_yesterday_success"], capture_output=True, text=True, check=True)
+    assert res3.stdout.strip() == "RETRY"
+
+
+def test_vbs_gate_exits_instantly_when_today_completed(tmp_path: Path):
+    """
+    Executes cscript.exe on run_daily.vbs when today's paper exists to ensure
+    it exits immediately without launching run_daily.bat or network requests.
+    """
+    import time
+    vbs_path = Path(__file__).resolve().parent.parent / "run_daily.vbs"
+    today = datetime.date.today()
+    user_profile = Path(os.environ.get("USERPROFILE", os.path.expanduser("~")))
+    desktop_pdf = user_profile / "Desktop" / "TOI Daily" / str(today.year) / today.strftime("%B") / f"TOI_Ahmedabad_{today}.pdf"
+
+    # Create dummy valid PDF (> 100 KB) for today
+    desktop_pdf.parent.mkdir(parents=True, exist_ok=True)
+    created_dummy = False
+    if not desktop_pdf.exists():
+        desktop_pdf.write_bytes(b"%PDF-1.4 " + b"0" * 110000)
+        created_dummy = True
+
+    try:
+        t0 = time.perf_counter()
+        res = subprocess.run(
+            ["cscript.exe", "//NoLogo", str(vbs_path)],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        t1 = time.perf_counter()
+        assert res.returncode == 0
+        # Gate must execute and skip quickly in milliseconds
+        assert (t1 - t0) < 1.0, f"Gate skip took too long: {(t1 - t0):.3f}s"
+    finally:
+        if created_dummy and desktop_pdf.exists():
+            desktop_pdf.unlink()
 
 
 def test_daily_lifecycle_first_login_vs_subsequent_logins(tmp_path: Path):
