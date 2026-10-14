@@ -67,6 +67,28 @@ class NotificationManager:
         message = f"Version {new_version} is available. Visit GitHub to download the update."
         self._send_toast(title, message, logger=logger)
 
+    def notify_archive_success(
+        self,
+        zip_path: Path,
+        month_name: str,
+        year: int,
+        files_count: int,
+        saved_bytes: int,
+        logger: Optional[logging.Logger] = None
+    ) -> None:
+        """Notifies the user when a monthly ZIP archive has been successfully completed."""
+        if not self.enabled:
+            return
+
+        saved_mb = saved_bytes / (1024 * 1024)
+        title = "📦 TOI Monthly Archive Completed"
+        message = (
+            f"Archived {month_name} {year} ({files_count} issues).\n"
+            f"Saved: {saved_mb:.2f} MB\n"
+            f"Archive: {zip_path.name}"
+        )
+        self._send_toast(title, message, launch_path=zip_path.parent, logger=logger)
+
     def _send_toast(
         self,
         title: str,

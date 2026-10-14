@@ -129,6 +129,11 @@ class Config:
         self.browser_headless: bool = bool(browser_fb.get("headless", True))
         self.browser_timeout_ms: int = int(browser_fb.get("timeout_ms", 45000))
 
+        arch_cfg = config_data.get("monthly_archive", {})
+        self.monthly_archive_enabled: bool = bool(arch_cfg.get("enabled", True))
+        self.delete_source_after_archiving: bool = bool(arch_cfg.get("delete_source_after_archiving", True))
+        self.min_compression_savings_pct: float = float(arch_cfg.get("min_compression_savings_pct", 0.0))
+
     @property
     def city_slug(self) -> str:
         return self.REQUIRED_CITY_SLUG
@@ -228,6 +233,11 @@ def load_config(custom_path: Path = None, logger: Optional[logging.Logger] = Non
             "enabled": False,
             "headless": True,
             "timeout_ms": 45000
+        },
+        "monthly_archive": {
+            "enabled": True,
+            "delete_source_after_archiving": True,
+            "min_compression_savings_pct": 0.0
         }
     }
 

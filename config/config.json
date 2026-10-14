@@ -12,5 +12,10 @@
     "enabled": false,
     "headless": true,
     "timeout_ms": 45000
+  },
+  "monthly_archive": {
+    "enabled": true,
+    "delete_source_after_archiving": true,
+    "min_compression_savings_pct": 0.0
   }
 }

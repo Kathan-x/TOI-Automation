@@ -72,7 +72,15 @@ class Downloader:
         filename = final_pdf_path.name
         temp_part_path = self.config.temp_dir / f"{filename}.part"
 
-        # 1. Fast Skip Check: Skip if already exists and valid in Year/Month archive
+        # 1. Fast Skip Check: Skip if already exists and valid in monthly ZIP or Year/Month archive
+        from .archive_manager import is_date_in_monthly_archive
+        in_arch, arch_path, arch_pages = is_date_in_monthly_archive(target_date, self.config.base_archive_dir)
+        if in_arch and arch_path:
+            self.logger.info(
+                f"Existing valid Ahmedabad newspaper found in archive {arch_path.name} ({arch_pages} pages). Skipping download."
+            )
+            return True, arch_path, arch_pages, 0.0, None
+
         if final_pdf_path.exists():
             is_valid, pages, msg = validate_pdf_file(final_pdf_path)
             if is_valid:

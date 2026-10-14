@@ -73,6 +73,11 @@ def parse_args():
         help="Maximum historical days to sweep for recovery (defaults to config max_backfill_days, 31)."
     )
     parser.add_argument(
+        "--archive",
+        action="store_true",
+        help="Run monthly ZIP archive optimizer check for completed months."
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable detailed debug logging."
@@ -111,9 +116,10 @@ def find_last_archived_date_before(
         except ValueError:
             pass
 
-    # 2. Filesystem check for existing valid PDFs
+    # 2. Filesystem check for existing valid PDFs (both folder structure and monthly ZIPs)
     base_dir = config.base_archive_dir
     if base_dir.exists():
+        import zipfile
         pattern = re.compile(r"TOI_Ahmedabad_(\d{4})-(\d{2})-(\d{2})\.pdf$", re.IGNORECASE)
         for pdf_file in base_dir.rglob("TOI_Ahmedabad_*.pdf"):
             match = pattern.search(pdf_file.name)
@@ -124,6 +130,23 @@ def find_last_archived_date_before(
                         found_dates.add(d)
                 except Exception:
                     pass
+
+        # Inspect monthly ZIP archives as well
+        for zip_file in base_dir.rglob("*.zip"):
+            if not zip_file.is_file() or not zipfile.is_zipfile(zip_file):
+                continue
+            try:
+                with zipfile.ZipFile(zip_file, "r") as zf:
+                    for name in zf.namelist():
+                        match = pattern.search(name)
+                        if match:
+                            d = datetime.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+                            if d < before_date:
+                                info = zf.getinfo(name)
+                                if info.file_size > 100 * 1024:
+                                    found_dates.add(d)
+            except Exception:
+                pass
 
     return max(found_dates) if found_dates else None
 
@@ -146,10 +169,13 @@ def recover_missed_days(
     Guarantees:
     - Never overwrites an existing valid PDF.
     - Strictly Ahmedabad edition only.
-    - Preserves smart Year/Month archive structure (Desktop\\TOI Daily\\YYYY\\MonthName\\).
+    - Preserves smart Year/Month archive structure (Desktop\\TOI Daily\\YYYY\\MonthName\\) or monthly ZIP.
+    - If a monthly ZIP exists for a recovered date, updates the ZIP directly without recreating a folder.
     - Failed downloads remain retryable (never marks unavailable paper as successful).
     - Backfill results do not regress today's top-level state.
     """
+    from .archive_manager import is_date_in_monthly_archive, get_monthly_archive_path, add_pdf_to_monthly_archive
+
     edition = config.REQUIRED_EDITION
     results = {
         "checked": 0,
@@ -195,7 +221,24 @@ def recover_missed_days(
 
         target_pdf_path = config.get_target_pdf_path(past_date)
 
-        # 1. Check if valid PDF already exists in archive
+        # 1. Check if valid PDF already exists in monthly archive ZIP
+        in_arch, arch_path, arch_pages = is_date_in_monthly_archive(past_date, config.base_archive_dir)
+        if in_arch and arch_path:
+            logger.info(
+                f"Backfill: {edition} {past_date_str} already archived ({arch_pages} pages) in {arch_path.name}. Preserving without overwrite."
+            )
+            results["existing_valid"] += 1
+            if not state_mgr.is_date_completed(past_date_str):
+                state_mgr.record_backfill_result(
+                    date_str=past_date_str,
+                    success=True,
+                    file_path=arch_path,
+                    page_count=arch_pages,
+                    size_bytes=arch_path.stat().st_size
+                )
+            continue
+
+        # 2. Check if valid PDF already exists in month folder
         if target_pdf_path.exists():
             is_valid, pages, msg = validate_pdf_file(target_pdf_path)
             if is_valid:
@@ -219,7 +262,7 @@ def recover_missed_days(
                 from .validator import safe_cleanup_corrupted_file
                 safe_cleanup_corrupted_file(target_pdf_path, logger)
 
-        # 2. PDF missing or invalid: attempt recovery download (strictly Ahmedabad)
+        # 3. PDF missing or invalid: attempt recovery download (strictly Ahmedabad)
         logger.info(f"Backfill: Attempting recovery download for missing paper ({edition}, {past_date_str})...")
         try:
             b_success, b_path, b_pages, b_dur, b_err = downloader.download_daily_paper(
@@ -227,10 +270,26 @@ def recover_missed_days(
             )
             if b_success and b_path and b_path.exists():
                 file_size = b_path.stat().st_size
+
+                # Check if this date's month has an existing monthly ZIP archive
+                month_name = past_date.strftime("%B")
+                monthly_zip = get_monthly_archive_path(config.base_archive_dir, past_date.year, past_date.month, month_name)
+
+                final_recorded_path = b_path
+                if monthly_zip.exists():
+                    logger.info(f"Backfill: Existing archive {monthly_zip.name} detected. Safely adding recovered edition into ZIP...")
+                    added = add_pdf_to_monthly_archive(b_path, past_date, config.base_archive_dir, logger=logger)
+                    if added:
+                        final_recorded_path = monthly_zip
+                        file_size = monthly_zip.stat().st_size
+                        logger.info(f"Backfill: Recovered edition successfully archived inside {monthly_zip.name}.")
+                    else:
+                        logger.warning(f"Backfill: Could not add into ZIP; retaining recovered PDF at {b_path}.")
+
                 state_mgr.record_backfill_result(
                     date_str=past_date_str,
                     success=True,
-                    file_path=b_path,
+                    file_path=final_recorded_path,
                     page_count=b_pages,
                     size_bytes=file_size
                 )
@@ -238,7 +297,7 @@ def recover_missed_days(
                     date_str=past_date_str,
                     edition=edition,
                     status="success",
-                    file_path=b_path,
+                    file_path=final_recorded_path,
                     page_count=b_pages,
                     size_bytes=file_size,
                     duration_seconds=b_dur
@@ -246,7 +305,7 @@ def recover_missed_days(
                 results["recovered"] += 1
                 logger.info(
                     f"Backfill: Successfully recovered {edition} for {past_date_str}! "
-                    f"Location: {b_path} ({b_pages} pages, {file_size:,} bytes)"
+                    f"Location: {final_recorded_path} ({b_pages} pages, {file_size:,} bytes)"
                 )
             else:
                 # Failed downloads must remain retryable. Do not mark as success!
@@ -441,7 +500,12 @@ def run():
                 max_days=args.backfill_days or getattr(config, "max_backfill_days", 31)
             )
 
-        # 12. Exit Code determination
+        # 12. Run automatic monthly archive check if requested
+        if args.archive:
+            from .archive_manager import process_monthly_archives
+            process_monthly_archives(config=config, logger=logger, current_date=target_date)
+
+        # 13. Exit Code determination
         if not today_already_valid and not success:
             sys.exit(1)
 

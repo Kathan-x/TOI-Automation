@@ -63,6 +63,41 @@ catch {
     Write-Host "[SUCCESS] Task registered via schtasks.exe fallback." -ForegroundColor Green
 }
 
+# 4b. Register Monthly Archive Maintenance Task: TOI_Monthly_Archive
+$ArchiveTaskName = "TOI_Monthly_Archive"
+$ArchiveVbsPath = Join-Path $ScriptDir "run_archive.vbs"
+
+Write-Host "Registering Windows Scheduled Task: $ArchiveTaskName..." -ForegroundColor Cyan
+
+$ArchiveAction = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$ArchiveVbsPath`"" -WorkingDirectory $ScriptDir
+$ArchiveTrigger = New-ScheduledTaskTrigger -Daily -At "06:30AM"
+$ArchiveSettings = New-ScheduledTaskSettingsSet `
+    -StartWhenAvailable `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
+    -MultipleInstances IgnoreNew
+
+try {
+    Unregister-ScheduledTask -TaskName $ArchiveTaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+    Register-ScheduledTask `
+        -TaskName $ArchiveTaskName `
+        -Action $ArchiveAction `
+        -Trigger $ArchiveTrigger `
+        -Settings $ArchiveSettings `
+        -Principal $Principal `
+        -Description "Automatically checks and archives completed months of Times of India newspapers into verified ZIP archives daily at 6:30 AM." | Out-Null
+
+    Write-Host "[SUCCESS] Task '$ArchiveTaskName' successfully registered in Windows Task Scheduler!" -ForegroundColor Green
+    Write-Host "  - Schedule: Daily at 6:30 AM (with StartWhenAvailable missed-run catchup)" -ForegroundColor Gray
+}
+catch {
+    Write-Warning "PowerShell Archive Task Registration failed: $_. Falling back to schtasks.exe..."
+    & schtasks /Create /TN "$ArchiveTaskName" /TR "wscript.exe `"$ArchiveVbsPath`"" /SC DAILY /ST 06:30 /F /RL LIMITED | Out-Null
+    Write-Host "[SUCCESS] Archive task registered via schtasks.exe fallback." -ForegroundColor Green
+}
+
 # 5. Clean up any legacy Startup folder shortcut to prevent logon triggers
 try {
     $StartupDir = [System.Environment]::GetFolderPath('Startup')

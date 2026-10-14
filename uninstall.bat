@@ -6,10 +6,12 @@ echo   Times of India Daily Downloader - Uninstaller
 echo ======================================================================
 echo.
 
-echo Removing Windows Scheduled Task...
+echo Removing Windows Scheduled Tasks...
 powershell -Command "Unregister-ScheduledTask -TaskName 'TOI_Daily_Downloader' -Confirm:$false -ErrorAction SilentlyContinue" >nul 2>&1
 schtasks /Delete /TN "TOI_Daily_Downloader" /F >nul 2>&1
-echo [SUCCESS] Scheduled task removed from Windows Task Scheduler.
+powershell -Command "Unregister-ScheduledTask -TaskName 'TOI_Monthly_Archive' -Confirm:$false -ErrorAction SilentlyContinue" >nul 2>&1
+schtasks /Delete /TN "TOI_Monthly_Archive" /F >nul 2>&1
+echo [SUCCESS] Scheduled tasks removed from Windows Task Scheduler.
 
 echo.
 echo Removing Windows Startup folder shortcut...

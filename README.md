@@ -100,18 +100,63 @@ You can customize program behavior by opening the `config/config.json` file in N
 ```json
 {
   "edition": "Ahmedabad",
+  "download_dir": "Desktop/TOI Daily",
   "retry_count": 3,
   "retry_delay_seconds": 5,
   "request_timeout_seconds": 30,
   "notifications_enabled": true,
   "log_level": "INFO",
-  "check_updates_weekly": true
+  "max_backfill_days": 31,
+  "backfill_enabled": true,
+  "monthly_archive": {
+    "enabled": true,
+    "delete_source_after_archiving": true,
+    "min_compression_savings_pct": 0.0
+  }
 }
 ```
 
-* **`notifications_enabled`**: Set to `true` to show toast notifications when downloads finish, or `false` for complete silence.
+* **`monthly_archive.enabled`**: Enables automatic daily checks for completed previous months and archives them into standard ZIP files.
+* **`monthly_archive.delete_source_after_archiving`**: Deletes the original monthly folder after successful ZIP creation, `testzip()` validation, and SHA-256 byte-for-byte verification (activated per Option A).
+* **`monthly_archive.min_compression_savings_pct`**: Minimum storage savings required before source folder deletion is allowed (set to `0.0%` for unconstrained deletion after full verification).
+* **`notifications_enabled`**: Set to `true` to show toast notifications when downloads and monthly archives finish, or `false` for complete silence.
 * **`retry_count`**: How many times to retry if your internet connection drops.
-* **`check_updates_weekly`**: Automatically checks for new versions of this tool once a week.
+* **`backfill_enabled`**: Automatically recovers missed recent days when you turn on your laptop.
+
+---
+
+## 📦 Automatic Monthly ZIP Archiving & Reading Old Newspapers
+
+### 1. How Monthly Archiving Works
+When a new calendar month begins, previous completed months are automatically archived into clean, standard ZIP files:
+
+```text
+Desktop\
+└── TOI Daily\
+    ├── 2026\
+    │   ├── 2026-08_August.zip
+    │   ├── 2026-09_September.zip
+    │   └── October\
+    │       ├── TOI_Ahmedabad_2026-10-01.pdf
+    │       └── ...
+```
+
+* **Dynamic Boundary**: The current calendar month is **never** archived and continues receiving daily PDFs in its normal folder.
+* **Atomic & Verified**: Archives are constructed with temporary files (`.zip.tmp`), verified with CRC checks and SHA-256 byte-for-byte hashes, and atomically finalized.
+* **Automated Maintenance Task**: Windows Task Scheduler automatically runs a dedicated maintenance task (`TOI_Monthly_Archive`) once daily at 6:30 AM (with `StartWhenAvailable` catch-up if your computer was asleep or off).
+
+### 2. How to Open and Read Any Archived Newspaper
+All archives use standard Windows-native ZIP compression (`ZIP_DEFLATED`). You do not need third-party extraction tools or command-line commands:
+
+1. Open your **`Desktop → TOI Daily`** folder.
+2. Open the **Year** folder (e.g. `2026`).
+3. Double-click any monthly archive file, such as **`2026-09_September.zip`**. Windows File Explorer will open it just like an ordinary folder.
+4. Double-click the month folder inside (e.g. `September`).
+5. Double-click any day's PDF (e.g. `TOI_Ahmedabad_2026-09-01.pdf`) to read it instantly in your favorite PDF viewer (Adobe Acrobat, Edge, Chrome, etc.).
+6. To extract a copy, simply drag and drop the PDF file out of the ZIP window onto your Desktop or any folder.
+
+### 3. Historical Backfill into Archived Months
+If a previously unavailable edition from an archived month is later published by InduPaper, the downloader will automatically recover that edition and safely add it directly into the existing verified ZIP archive without recreating an untracked permanent folder outside the archive.
 
 ---
 

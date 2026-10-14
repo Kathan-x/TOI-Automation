@@ -3,6 +3,7 @@ PDF File Validator for TOI Daily (v2.0).
 Ensures downloaded files are uncorrupted, valid, and contain actual newspaper pages.
 """
 
+import io
 import logging
 from pathlib import Path
 from typing import Tuple
@@ -10,6 +11,37 @@ from pypdf import PdfReader
 
 
 MIN_VALID_PDF_SIZE_BYTES = 100 * 1024  # At least 100 KB for a realistic multi-page paper
+
+
+def validate_pdf_bytes(pdf_bytes: bytes) -> Tuple[bool, int, str]:
+    """
+    Checks if raw bytes represent a valid, readable, non-empty PDF.
+
+    Returns:
+        (is_valid: bool, page_count: int, description: str)
+    """
+    file_size = len(pdf_bytes)
+    if file_size < MIN_VALID_PDF_SIZE_BYTES:
+        return False, 0, f"Byte size ({file_size} bytes) is suspiciously small (minimum: {MIN_VALID_PDF_SIZE_BYTES} bytes)"
+
+    if not pdf_bytes.startswith(b"%PDF-"):
+        header = pdf_bytes[:5]
+        return False, 0, f"Invalid PDF header: expected '%PDF-', got '{header!r}'"
+
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        num_pages = len(reader.pages)
+        if num_pages < 1:
+            return False, 0, "PDF contains 0 pages"
+
+        # Verify first and last page can be extracted without syntax/stream errors
+        _ = reader.pages[0]
+        if num_pages > 1:
+            _ = reader.pages[-1]
+
+        return True, num_pages, f"Valid PDF with {num_pages} pages ({file_size:,} bytes)"
+    except Exception as e:
+        return False, 0, f"PDF structural validation failed: {e}"
 
 
 def validate_pdf_file(file_path: Path) -> Tuple[bool, int, str]:
